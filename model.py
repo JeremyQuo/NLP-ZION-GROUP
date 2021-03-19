@@ -1,9 +1,11 @@
 import pandas as pd
 import numpy as np
 from sklearn import preprocessing
+le = preprocessing.LabelEncoder()
 # Preliminaries
 import torchtext
 from torchtext.data import Field, TabularDataset, BucketIterator, Iterator
+from torchtext.data import Dataset, Example
 
 # Models
 import torch.nn as nn
@@ -60,19 +62,42 @@ UNK_INDEX = tokenizer.convert_tokens_to_ids(tokenizer.unk_token)
 label_field = Field(sequential=False, use_vocab=False, batch_first=True, dtype=torch.float)
 text_field = Field(use_vocab=False, tokenize=tokenizer.encode, lower=False, include_lengths=False, batch_first=True,
                    fix_length=MAX_SEQ_LEN, pad_token=PAD_INDEX, unk_token=UNK_INDEX)
-fields = [('label', label_field), ('article_question', text_field), ('A', text_field),('B', text_field),('C', text_field),('D', text_field)]
+fields = [('label', label_field), ('input_ids_A', text_field),('input_ids_B', text_field),('input_ids_C', text_field),('input_ids_D', text_field)]
+
+
+
+class DataFrameDataset(Dataset):
+    def __init__(self, df: pd.DataFrame, fields: list):
+        super(DataFrameDataset, self).__init__(
+            [
+                Example.fromlist(list(r), fields) 
+                for i, r in df.iterrows()
+            ], 
+            fields
+        )
 
 
 # TabularDataset
-train, valid, test = TabularDataset.splits(path="./", train='train.csv', validation='val.csv',
-                                           test='test.csv', format='CSV', fields=fields, skip_header=True)
+#train, valid, test = TabularDataset.splits(path="./", train='train.csv', validation='val.csv',
+ #                                          test='test.csv', format='CSV', fields=fields, skip_header=True)
 
+train_df_std = pd.read_csv('std_data/MCTest/mc160/mc160.train.csv',index_col=0)
+train_df = pd.DataFrame({})
+train_df["labels"] = le.fit_transform(train_df_std['answer'])
+for i in ["A","B","C","D"]:
+    col = f"input_ids_{i}"
+    train_df[col] = train_df_std['article']+ '[SEP]' +train_df_std['question']+ '[SEP]' +train_df_std[i]
 
-train_iter = BucketIterator(train, batch_size=16, sort_key=lambda x: len(x.article_question),
+train, valid = DataFrameDataset(
+    df=train_df, 
+    fields=fields
+).split()
+
+train_iter = BucketIterator(train, batch_size=16, sort_key=lambda x: len(x.input_ids_B),
                             device=device, train=True, sort=True, sort_within_batch=True)
-valid_iter = BucketIterator(valid, batch_size=16, sort_key=lambda x: len(x.article_question),
+valid_iter = BucketIterator(valid, batch_size=16, sort_key=lambda x: len(x.input_ids_B),
                             device=device, train=True, sort=True, sort_within_batch=True)
-test_iter = Iterator(test, batch_size=16, device=device, train=False, shuffle=False, sort=False)
+# test_iter = Iterator(test, batch_size=16, device=device, train=False, shuffle=False, sort=False)
 
 
 class BERT(nn.Module):
@@ -109,16 +134,11 @@ def Train(model,
     # training loop
     model.train()
     for epoch in range(num_epochs):
-        for ( labels,article_question, A,B,C,D ), _ in train_loader:
+        for (labels, A,B,C,D),_ in train_loader:
             labels = labels.type(torch.LongTensor)           
             labels = labels.to(device)
 
-            model_input = torch.stack([
-                torch.cat([article_question,A],1),
-                torch.cat([article_question,B],1),
-                torch.cat([article_question,C],1),
-                torch.cat([article_question,D],1)],
-            1)
+            model_input = torch.stack([A,B,C,D],1)
             model_input = model_input.type(torch.LongTensor).to(device)
 
             output = model(model_input, labels)
@@ -137,16 +157,11 @@ def Train(model,
                 model.eval()
                 with torch.no_grad():                    
                     # validation loop
-                    for ( labels, article_question, A,B,C,D), _ in valid_loader:
+                    for ( labels, A,B,C,D), _ in valid_loader:
                         labels = labels.type(torch.LongTensor)           
                         labels = labels.to(device)
 
-                        model_input = torch.stack([
-                            torch.cat([article_question,A],1),
-                            torch.cat([article_question,B],1),
-                            torch.cat([article_question,C],1),
-                            torch.cat([article_question,D],1)],
-                        1)
+                        model_input = torch.stack([A,B,C,D],1)
                         model_input = model_input.type(torch.LongTensor).to(device)
                         
                         output = model(model_input, labels)
