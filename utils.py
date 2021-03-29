@@ -38,10 +38,9 @@ def save_metrics(save_path, train_loss_list, valid_loss_list, global_steps_list)
 
 
 
-def prepare_data(device):
+def prepare_data(device="cpu",MAX_SEQ_LEN=128,batch_size=16,train_csv='std_data/Race/middle/train.csv'):
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     # Model parameter
-    MAX_SEQ_LEN = 128
     PAD_INDEX = tokenizer.convert_tokens_to_ids(tokenizer.pad_token)
     UNK_INDEX = tokenizer.convert_tokens_to_ids(tokenizer.unk_token)
 
@@ -50,7 +49,6 @@ def prepare_data(device):
     text_field = Field(use_vocab=False, tokenize=tokenizer.encode, lower=False, include_lengths=False, batch_first=True,
                     fix_length=MAX_SEQ_LEN, pad_token=PAD_INDEX, unk_token=UNK_INDEX)
     fields = [('label', label_field), ('input_ids_A', text_field),('input_ids_B', text_field),('input_ids_C', text_field),('input_ids_D', text_field)]
-
 
 
     class DataFrameDataset(Dataset):
@@ -63,7 +61,7 @@ def prepare_data(device):
                 fields
             )
 
-    train_df_std = pd.read_csv('std_data/MCTest/mc160/mc160.train.csv',index_col=0)
+    train_df_std = pd.read_csv(train_csv,index_col=0)
     train_df = pd.DataFrame({})
     train_df["labels"] = le.fit_transform(train_df_std['answer'])
     for i in ["A","B","C","D"]:
@@ -75,11 +73,11 @@ def prepare_data(device):
         fields=fields
     ).split()
 
-    train_iter = BucketIterator(train, batch_size=24, sort_key=lambda x: len(x.input_ids_B),
+    train_iter = BucketIterator(train, batch_size=batch_size, sort_key=lambda x: len(x.input_ids_B),
                                 device=device, train=True, sort=True, sort_within_batch=True)
-    valid_iter = BucketIterator(valid, batch_size=24, sort_key=lambda x: len(x.input_ids_B),
+    valid_iter = BucketIterator(valid, batch_size=batch_size, sort_key=lambda x: len(x.input_ids_B),
                                 device=device, train=True, sort=True, sort_within_batch=True)
-    #test_iter = Iterator(test, batch_size=24, device=device, train=False, shuffle=False, sort=False)
+    #test_iter = Iterator(test, batch_size=batch_size, device=device, train=False, shuffle=False, sort=False)
 
     return train_iter,valid_iter
 
