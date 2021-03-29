@@ -1,11 +1,13 @@
+# pip install pandas numpy sklearn torchtext transformers
+# pip install torch==1.8.1+cu102 -f https://download.pytorch.org/whl/torch_stable.html
 import pandas as pd
 import numpy as np
 from sklearn import preprocessing
 le = preprocessing.LabelEncoder()
 # Preliminaries
 import torchtext
-from torchtext.data import Field, TabularDataset, BucketIterator, Iterator
-from torchtext.data import Dataset, Example
+from torchtext.legacy.data import Field, TabularDataset, BucketIterator, Iterator
+from torchtext.legacy.data import Dataset, Example
 
 # Models
 import torch.nn as nn
@@ -15,6 +17,8 @@ from transformers import BertConfig, BertTokenizer,CONFIG_NAME, WEIGHTS_NAME,Ber
 from torch.nn.modules import Softmax
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print(f"***Available Device: {device} ***")
+
 def save_checkpoint(save_path, model, valid_loss):
 
     if save_path == None:
@@ -38,18 +42,6 @@ def save_metrics(save_path, train_loss_list, valid_loss_list, global_steps_list)
     
     torch.save(state_dict, save_path)
     print(f'Model saved to ==> {save_path}')
-
-
-def load_metrics(load_path):
-
-    if load_path==None:
-        return
-    
-    state_dict = torch.load(load_path, map_location=device)
-    print(f'Model loaded from <== {load_path}')
-    
-    return state_dict['train_loss_list'], state_dict['valid_loss_list'], state_dict['global_steps_list']
-
 
 
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -93,9 +85,9 @@ train, valid = DataFrameDataset(
     fields=fields
 ).split()
 
-train_iter = BucketIterator(train, batch_size=16, sort_key=lambda x: len(x.input_ids_B),
+train_iter = BucketIterator(train, batch_size=24, sort_key=lambda x: len(x.input_ids_B),
                             device=device, train=True, sort=True, sort_within_batch=True)
-valid_iter = BucketIterator(valid, batch_size=16, sort_key=lambda x: len(x.input_ids_B),
+valid_iter = BucketIterator(valid, batch_size=24, sort_key=lambda x: len(x.input_ids_B),
                             device=device, train=True, sort=True, sort_within_batch=True)
 # test_iter = Iterator(test, batch_size=16, device=device, train=False, shuffle=False, sort=False)
 
