@@ -34,9 +34,15 @@ def save_metrics(save_path, train_loss_list, valid_loss_list, global_steps_list)
     torch.save(state_dict, save_path)
     print(f'Model saved to ==> {save_path}')
 
+def load_checkpoint(load_path, model):
+    if load_path==None:
+        return
 
+    state_dict = torch.load(load_path, map_location=device)
+    print(f'Model loaded from <== {load_path}')
 
-
+    model.load_state_dict(state_dict['model_state_dict'])
+    return state_dict['valid_loss']
 
 def prepare_data(device="cpu",MAX_SEQ_LEN=128,batch_size=16,train_csv='std_data/Race/middle/train.csv'):
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
