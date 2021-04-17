@@ -6,8 +6,8 @@ class Config:
         self.destination_folder = "Model"
         self.num_epochs = 6
 
-        self.train_csv = 'std_data/Race/middle/train.csv'
-        self.MAX_SEQ_LEN = 128
-        self.batch_size = 16
+        self.train_csv = 'std_data/MCTest/Mc500/mc500.train.csv'
+        self.MAX_SEQ_LEN = 512
+        self.batch_size = 1
 
         print(f"[-] Training Dataset: {self.train_csv}")
