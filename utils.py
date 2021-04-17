@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn import preprocessing
-le = preprocessing.LabelEncoder()
+
 # Preliminaries
 import torchtext
 from torchtext.legacy.data import Field, TabularDataset, BucketIterator, Iterator
@@ -34,7 +34,7 @@ def save_metrics(save_path, train_loss_list, valid_loss_list, global_steps_list)
     torch.save(state_dict, save_path)
     print(f'Model saved to ==> {save_path}')
 
-def load_checkpoint(load_path, model):
+def load_checkpoint(load_path, model,device):
     if load_path==None:
         return
 
@@ -44,7 +44,7 @@ def load_checkpoint(load_path, model):
     model.load_state_dict(state_dict['model_state_dict'])
     return state_dict['valid_loss']
 
-def prepare_data(device="cpu",MAX_SEQ_LEN=128,batch_size=16,train_csv='std_data/Race/middle/train.csv'):
+def prepare_data(device,MAX_SEQ_LEN,batch_size,train_csv):
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     # Model parameter
     PAD_INDEX = tokenizer.convert_tokens_to_ids(tokenizer.pad_token)
@@ -67,6 +67,7 @@ def prepare_data(device="cpu",MAX_SEQ_LEN=128,batch_size=16,train_csv='std_data/
                 fields
             )
 
+    le = preprocessing.LabelEncoder()
     train_df_std = pd.read_csv(train_csv,index_col=0)
     train_df = pd.DataFrame({})
     train_df["labels"] = le.fit_transform(train_df_std['answer'])
