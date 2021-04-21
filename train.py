@@ -4,6 +4,8 @@
 import pandas as pd
 import numpy as np
 from sklearn import preprocessing
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+
 le = preprocessing.LabelEncoder()
 # Preliminaries
 import torchtext
@@ -20,6 +22,7 @@ from torch.nn.modules import Softmax
 
 from utils import *
 from Config import Config
+from model import BERT
 config = Config()
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -27,61 +30,11 @@ print(f"***Available Device: {device} ***")
 
 # %%
 
-tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-# Model parameter
-PAD_INDEX = tokenizer.convert_tokens_to_ids(tokenizer.pad_token)
-UNK_INDEX = tokenizer.convert_tokens_to_ids(tokenizer.unk_token)
+train_iter,valid_iter= prepare_data(device,config.MAX_SEQ_LEN,config.batch_size,config.train_csv,config.test_csv)
 
-# Fields
-label_field = Field(sequential=False, use_vocab=False, batch_first=True, dtype=torch.float)
-text_field = Field(use_vocab=False, tokenize=tokenizer.encode, lower=False, include_lengths=False, batch_first=True,
-                fix_length=config.MAX_SEQ_LEN, pad_token=PAD_INDEX, unk_token=UNK_INDEX)
-fields = [('label', label_field), ('input_ids_A', text_field),('input_ids_B', text_field),('input_ids_C', text_field),('input_ids_D', text_field)]
-
-
-class DataFrameDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, fields: list):
-        super(DataFrameDataset, self).__init__(
-            [
-                Example.fromlist(list(r), fields) 
-                for i, r in df.iterrows()
-            ], 
-            fields
-        )
-
-le = preprocessing.LabelEncoder()
-train_df_std = pd.read_csv(config.train_csv,index_col=0)
-train_df = pd.DataFrame({})
-train_df["labels"] = le.fit_transform(train_df_std['answer'])
-for i in ["A","B","C","D"]:
-    col = f"input_ids_{i}"
-    train_df[col] = train_df_std['article']+ '[SEP]' +train_df_std['question']+ '[SEP]' +train_df_std[i]
-
-train, valid = DataFrameDataset(
-    df=train_df, 
-    fields=fields
-).split()
-
-train_iter = BucketIterator(train, batch_size=config.batch_size, sort_key=lambda x: len(x.input_ids_B),
-                            device=device, train=True, sort=True, sort_within_batch=True)
-valid_iter = BucketIterator(valid, batch_size=config.batch_size, sort_key=lambda x: len(x.input_ids_B),
-                            device=device, train=True, sort=True, sort_within_batch=True)
-
-
-# %%
-class BERT(nn.Module):
-    def __init__(self):
-        super(BERT, self).__init__()
-        options_name = "bert-base-uncased"
-        self.encoder = BertForMultipleChoice.from_pretrained(options_name,num_labels=4)
-    def forward(self, model_input, labels):
-        enc_output = self.encoder(model_input, labels=labels)
-        loss, text_fea = enc_output[:2]
-        return loss, text_fea
 
 def Train(model,
           optimizer,
-          criterion = nn.BCELoss(),
           train_loader = train_iter,
           valid_loader = valid_iter,
           num_epochs = config.num_epochs,
@@ -96,7 +49,12 @@ def Train(model,
     train_loss_list = []
     valid_loss_list = []
     global_steps_list = []
+    running_acc = 0
+    acc_list = []
 
+    y_pred = []
+    y_true = []
+    
     # training loop
     model.train()
     for epoch in range(num_epochs):
@@ -123,6 +81,8 @@ def Train(model,
                 model.eval()
                 with torch.no_grad():                    
                     # validation loop
+                    y_pred = []
+                    y_true = []
                     for ( labels, A,B,C,D), _ in valid_loader:
                         labels = labels.type(torch.LongTensor)           
                         labels = labels.to(device)
@@ -131,7 +91,10 @@ def Train(model,
                         model_input = model_input.type(torch.LongTensor).to(device)
                         
                         output = model(model_input, labels)
-                        loss, _ = output
+                        loss, val_output = output
+
+                        y_pred.extend(torch.argmax(val_output, 1).tolist())
+                        y_true.extend(labels.tolist())
                         
                         valid_running_loss += loss.item()
 
@@ -141,6 +104,10 @@ def Train(model,
                 train_loss_list.append(average_train_loss)
                 valid_loss_list.append(average_valid_loss)
                 global_steps_list.append(global_step)
+
+                running_acc = accuracy_score(y_true,y_pred)
+                acc_list.append(running_acc)
+                print(f"Validation Accuracy: {running_acc}")
 
                 # resetting running values
                 running_loss = 0.0                
@@ -154,6 +121,7 @@ def Train(model,
                 
                 # checkpoint
                 if best_valid_loss > average_valid_loss:
+                # if running_acc >= acc_list[-2]
                     best_valid_loss = average_valid_loss
                     save_checkpoint(file_path + '/' + 'model.pt', model, best_valid_loss)
                     save_metrics(file_path + '/' + 'metrics.pt', train_loss_list, valid_loss_list, global_steps_list)
@@ -163,5 +131,5 @@ def Train(model,
     
 # %%
 model = BERT().to(device)
-Train(model=model, optimizer = optim.Adam(model.parameters(),lr=2e-5))
+Train(model=model, optimizer = optim.Adam(model.parameters(),lr=1e-5))
 # %%

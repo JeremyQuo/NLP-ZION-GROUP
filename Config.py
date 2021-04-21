@@ -4,9 +4,12 @@ class Config:
 
         self.source_folder = "std_data"
         self.destination_folder = "Model"
-        self.num_epochs = 6
+        self.num_epochs = 10
+
+
 
         self.train_csv = 'std_data/MCTest/Mc500/mc500.train.csv'
+        self.test_csv = 'std_data/MCTest/Mc500/mc500.test.csv'
         self.MAX_SEQ_LEN = 512
         self.batch_size = 1
 

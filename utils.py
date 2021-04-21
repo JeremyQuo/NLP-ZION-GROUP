@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn import preprocessing
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
 # Preliminaries
 import torchtext
@@ -44,7 +45,7 @@ def load_checkpoint(load_path, model,device):
     model.load_state_dict(state_dict['model_state_dict'])
     return state_dict['valid_loss']
 
-def prepare_data(device,MAX_SEQ_LEN,batch_size,train_csv):
+def prepare_data(device,MAX_SEQ_LEN,batch_size,train_csv,test_csv=""):
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     # Model parameter
     PAD_INDEX = tokenizer.convert_tokens_to_ids(tokenizer.pad_token)
