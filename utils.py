@@ -2,11 +2,13 @@ import pandas as pd
 import numpy as np
 from sklearn import preprocessing
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.model_selection import train_test_split
+
 
 # Preliminaries
-import torchtext
-from torchtext.legacy.data import Field, TabularDataset, BucketIterator, Iterator
-from torchtext.legacy.data import Dataset, Example
+#import torchtext
+#from torchtext.legacy.data import Field, TabularDataset, BucketIterator, Iterator
+#from torchtext.legacy.data import Dataset, Example
 
 # Models
 import torch.nn as nn
@@ -14,6 +16,8 @@ import torch.optim as optim
 import torch
 from transformers import BertConfig, BertTokenizer,CONFIG_NAME, WEIGHTS_NAME,BertForMultipleChoice
 from torch.nn.modules import Softmax
+from torch.utils.data import Dataset, DataLoader
+
 def save_checkpoint(save_path, model, valid_loss):
     if save_path == None:
         return
@@ -45,47 +49,88 @@ def load_checkpoint(load_path, model,device):
     model.load_state_dict(state_dict['model_state_dict'])
     return state_dict['valid_loss']
 
+class MCDataset(Dataset):
+  def __init__(self, A,B,C,D, targets, tokenizer, max_len):
+    self.A = A
+    self.B = B
+    self.C = C
+    self.D = D
+    self.targets = targets
+    self.tokenizer = tokenizer
+    self.max_len = max_len
+  def __len__(self):
+    return len(self.targets)
+
+  def __getitem__(self, item):
+    A = str(self.A[item])
+    B = str(self.B[item])
+    C = str(self.C[item])
+    D = str(self.D[item])
+    target = self.targets[item]
+
+    encoding = self.tokenizer(
+        [A,B,C,D],
+        add_special_tokens=True,
+        max_length=self.max_len,
+        return_token_type_ids=False,
+        pad_to_max_length=True,
+        return_attention_mask=True,
+        return_tensors='pt',
+        )
+
+    return {
+      'A': A,
+      'B':B,
+      'C':C,
+      'D':D,
+      'input_ids': encoding['input_ids'],
+      'attention_mask': encoding['attention_mask'],
+      'targets': torch.tensor(target, dtype=torch.long)
+    }
+
+
+def create_data_loader(df, tokenizer, max_len, batch_size):
+    ds = MCDataset(
+        A=df.concat_A,
+        B=df.concat_B,
+        C=df.concat_C,
+        D=df.concat_D,
+        targets=df.labels.to_numpy(),
+        tokenizer=tokenizer,
+        max_len=max_len
+    )
+    return DataLoader(
+        ds,
+        batch_size=batch_size,
+        num_workers=0
+    )
+
+
 def prepare_data(device,MAX_SEQ_LEN,batch_size,train_csv,test_csv=""):
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-    # Model parameter
-    PAD_INDEX = tokenizer.convert_tokens_to_ids(tokenizer.pad_token)
-    UNK_INDEX = tokenizer.convert_tokens_to_ids(tokenizer.unk_token)
-
-    # Fields
-    label_field = Field(sequential=False, use_vocab=False, batch_first=True, dtype=torch.float)
-    text_field = Field(use_vocab=False, tokenize=tokenizer.encode, lower=False, include_lengths=False, batch_first=True,
-                    fix_length=MAX_SEQ_LEN, pad_token=PAD_INDEX, unk_token=UNK_INDEX)
-    fields = [('label', label_field), ('input_ids_A', text_field),('input_ids_B', text_field),('input_ids_C', text_field),('input_ids_D', text_field)]
-
-
-    class DataFrameDataset(Dataset):
-        def __init__(self, df: pd.DataFrame, fields: list):
-            super(DataFrameDataset, self).__init__(
-                [
-                    Example.fromlist(list(r), fields) 
-                    for i, r in df.iterrows()
-                ], 
-                fields
-            )
+    train_df_std = pd.read_csv(train_csv,index_col=0)
+    test_df_std = pd.read_csv(test_csv,index_col=0)
 
     le = preprocessing.LabelEncoder()
+
+
     train_df_std = pd.read_csv(train_csv,index_col=0)
     train_df = pd.DataFrame({})
     train_df["labels"] = le.fit_transform(train_df_std['answer'])
     for i in ["A","B","C","D"]:
-        col = f"input_ids_{i}"
+        col = f"concat_{i}"
         train_df[col] = train_df_std['article']+ '[SEP]' +train_df_std['question']+ '[SEP]' +train_df_std[i]
+        #train_df[col] = train_df_std['question']+ '[SEP]' +train_df_std[i] + '[SEP]' +train_df_std['article']
 
-    train, valid = DataFrameDataset(
-        df=train_df, 
-        fields=fields
-    ).split()
+    df_train, df_test = train_test_split(
+        train_df,
+        test_size=0.2
+    )
 
-    train_iter = BucketIterator(train, batch_size=batch_size, sort_key=lambda x: len(x.input_ids_B),
-                                device=device, train=True, sort=True, sort_within_batch=True)
-    valid_iter = BucketIterator(valid, batch_size=batch_size, sort_key=lambda x: len(x.input_ids_B),
-                                device=device, train=True, sort=True, sort_within_batch=True)
-    #test_iter = Iterator(test, batch_size=batch_size, device=device, train=False, shuffle=False, sort=False)
+ 
 
-    return train_iter,valid_iter
+    train_iter = create_data_loader(df_train.reset_index(drop=True), tokenizer, MAX_SEQ_LEN, batch_size)
+    test_iter = create_data_loader(df_test.reset_index(drop=True), tokenizer, MAX_SEQ_LEN, batch_size)
+
+    return train_iter,test_iter
 

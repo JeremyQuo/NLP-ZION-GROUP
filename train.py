@@ -40,6 +40,7 @@ def Train(model,
           num_epochs = config.num_epochs,
           eval_every = len(train_iter) // 2,
           file_path = config.destination_folder,
+          loss_fn = nn.CrossEntropyLoss().to(device),
           best_valid_loss = float("Inf")):
     
     # initialize running values
@@ -49,32 +50,43 @@ def Train(model,
     train_loss_list = []
     valid_loss_list = []
     global_steps_list = []
-    running_acc = 0
+    val_acc = 0
+    best_acc = 0
     acc_list = []
 
-    y_pred = []
-    y_true = []
+
     
     # training loop
     model.train()
     for epoch in range(num_epochs):
-        for (labels, A,B,C,D),_ in train_loader:
-            labels = labels.type(torch.LongTensor)           
+        
+        correct_predictions = 0
+        for d in train_loader:
+            labels = d['targets'].type(torch.LongTensor)           
             labels = labels.to(device)
+            input_ids = d['input_ids']
+            model_input = input_ids.type(torch.LongTensor).to(device)
 
-            model_input = torch.stack([A,B,C,D],1)
-            model_input = model_input.type(torch.LongTensor).to(device)
-
-            output = model(model_input, labels)
-            loss, _ = output
+            attention_mask = d['attention_mask'].type(torch.LongTensor).to(device)
 
             optimizer.zero_grad()
+
+            output = model(model_input, labels=labels, attention_mask=attention_mask)
+            loss, logits = output[:2]
+
+            # loss = loss_fn(logits, labels)
             loss.backward()
             optimizer.step()
+
+            _,preds = torch.max(logits, dim=1)
+            correct_predictions += torch.sum(preds == labels)
+           
+   
 
             # update running values
             running_loss += loss.item()
             global_step += 1
+
 
             # evaluation step
             if global_step % eval_every == 0:
@@ -83,17 +95,16 @@ def Train(model,
                     # validation loop
                     y_pred = []
                     y_true = []
-                    for ( labels, A,B,C,D), _ in valid_loader:
-                        labels = labels.type(torch.LongTensor)           
+                    for v in valid_loader:
+                        labels = v['targets'].type(torch.LongTensor)           
                         labels = labels.to(device)
+                        input_ids = v['input_ids']
+                        model_input = input_ids.type(torch.LongTensor).to(device)
+                        attention_mask = v['attention_mask'].type(torch.LongTensor).to(device)
 
-                        model_input = torch.stack([A,B,C,D],1)
-                        model_input = model_input.type(torch.LongTensor).to(device)
-                        
-                        output = model(model_input, labels)
-                        loss, val_output = output
-
-                        y_pred.extend(torch.argmax(val_output, 1).tolist())
+                        loss,logits = model(model_input, labels=labels, attention_mask=attention_mask)[:2]
+ 
+                        y_pred.extend(torch.argmax(logits, 1).tolist())
                         y_true.extend(labels.tolist())
                         
                         valid_running_loss += loss.item()
@@ -105,9 +116,11 @@ def Train(model,
                 valid_loss_list.append(average_valid_loss)
                 global_steps_list.append(global_step)
 
-                running_acc = accuracy_score(y_true,y_pred)
-                acc_list.append(running_acc)
-                print(f"Validation Accuracy: {running_acc}")
+                val_acc = accuracy_score(y_true,y_pred)
+                acc_list.append(val_acc)
+
+                print(f"Training Accuracy: {correct_predictions.double()/(train_loader.__len__()*train_loader.batch_size)}")
+                print(f"Validation Accuracy: {val_acc}")
 
                 # resetting running values
                 running_loss = 0.0                
@@ -120,8 +133,9 @@ def Train(model,
                               average_train_loss, average_valid_loss))
                 
                 # checkpoint
-                if best_valid_loss > average_valid_loss:
-                # if running_acc >= acc_list[-2]
+                # if best_valid_loss > average_valid_loss:
+                if val_acc >= best_acc:
+                    best_acc = val_acc
                     best_valid_loss = average_valid_loss
                     save_checkpoint(file_path + '/' + 'model.pt', model, best_valid_loss)
                     save_metrics(file_path + '/' + 'metrics.pt', train_loss_list, valid_loss_list, global_steps_list)
@@ -131,5 +145,6 @@ def Train(model,
     
 # %%
 model = BERT().to(device)
-Train(model=model, optimizer = optim.Adam(model.parameters(),lr=1e-5))
+model = BertForMultipleChoice.from_pretrained('bert-base-uncased').to(device)
+Train(model=model, optimizer = optim.Adam(model.parameters(),lr=2e-5))
 # %%
