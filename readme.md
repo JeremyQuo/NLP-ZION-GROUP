@@ -22,4 +22,8 @@ Document-based Question Answering
 - 4.	```/preprocessing``` :Some function to preprocess the original data
 - 5.	```/std_data```:Storing the data after preprocessing
         
+## Steps,performance and dependencies
+
+Please refer to the ```readme.md``` files under ```/Dream_model``` and ```/MCTest_Race_Model``` respectively.
+        
 
