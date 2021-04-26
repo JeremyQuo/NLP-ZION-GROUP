@@ -1,5 +1,5 @@
-python race.py\
- --data_dir=/content/RACE \
+python train_race.py\
+ --data_dir=/data/RACE/RACE \
  --bert_model=bert-base-uncased \
  --output_dir=large_models \
  --max_seq_length=256 \
