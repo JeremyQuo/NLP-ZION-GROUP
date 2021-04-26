@@ -3,8 +3,12 @@
 
 ## Requirement: 
 Based on the size of dataset, a GPU whose memory is equal or larger than 8 GB is needed in this experiment. And the expected running time is about 40 minutes (running on Nvidia RTX 3060Ti)
-Environment: 
+
+
+### Environment: 
+
 Python >= 3.6
+
 PyTorch >= 1.0
 
 ## Usage
