@@ -19,8 +19,9 @@ Document-based Question Answering
 - 1.	```/data```:The original data
 - 2.	```/Dream_model```:The QA system designed for ```dream```
 - 3.	```/MCTest_Race_Model```:The QA system designed for ```MCTest```and```RACE```
-- 4.	```/preprocessing``` :Some function to preprocess the original data
-- 5.	```/std_data```:Storing the data after preprocessing
+- 4.    ```/MCTest_Str_Matching```: A TF-IDF matchin approach for ```MCTest```
+- 5.	```/preprocessing``` :Some function to preprocess the original data
+- 6.	```/std_data```:Storing the data after preprocessing
         
 ## Steps,performance and dependencies
 
