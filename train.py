@@ -30,7 +30,7 @@ print(f"***Available Device: {device} ***")
 
 # %%
 
-train_iter,valid_iter= prepare_data(device,config.MAX_SEQ_LEN,config.batch_size,config.train_csv,config.test_csv)
+train_iter,valid_iter= prepare_data(device,config.MAX_SEQ_LEN,config.batch_size,config.train_csv,config.test_csv,n=config.n)
 
 
 def Train(model,
@@ -60,7 +60,8 @@ def Train(model,
     model.train()
     for epoch in range(num_epochs):
         
-        correct_predictions = 0
+        y_true = []
+        y_pred = []
         for d in train_loader:
             labels = d['targets'].type(torch.LongTensor)           
             labels = labels.to(device)
@@ -78,10 +79,12 @@ def Train(model,
             loss.backward()
             optimizer.step()
 
-            _,preds = torch.max(logits, dim=1)
-            correct_predictions += torch.sum(preds == labels)
+            # _,preds = torch.max(logits, dim=1)
+            # correct_predictions += torch.sum(preds == labels)
+
+            y_pred.extend(torch.argmax(logits, 1).tolist())
+            y_true.extend(labels.tolist())
            
-   
 
             # update running values
             running_loss += loss.item()
@@ -93,8 +96,8 @@ def Train(model,
                 model.eval()
                 with torch.no_grad():                    
                     # validation loop
-                    y_pred = []
-                    y_true = []
+                    val_pred = []
+                    val_true = []
                     for v in valid_loader:
                         labels = v['targets'].type(torch.LongTensor)           
                         labels = labels.to(device)
@@ -104,8 +107,8 @@ def Train(model,
 
                         loss,logits = model(model_input, labels=labels, attention_mask=attention_mask)[:2]
  
-                        y_pred.extend(torch.argmax(logits, 1).tolist())
-                        y_true.extend(labels.tolist())
+                        val_pred.extend(torch.argmax(logits, 1).tolist())
+                        val_true.extend(labels.tolist())
                         
                         valid_running_loss += loss.item()
 
@@ -116,11 +119,9 @@ def Train(model,
                 valid_loss_list.append(average_valid_loss)
                 global_steps_list.append(global_step)
 
-                val_acc = accuracy_score(y_true,y_pred)
+                val_acc = accuracy_score(val_true,val_pred)
                 acc_list.append(val_acc)
 
-                print(f"Training Accuracy: {correct_predictions.double()/(train_loader.__len__()*train_loader.batch_size)}")
-                print(f"Validation Accuracy: {val_acc}")
 
                 # resetting running values
                 running_loss = 0.0                
@@ -128,10 +129,12 @@ def Train(model,
                 model.train()
 
                 # print progress
-                print('Epoch [{}/{}], Step [{}/{}], Train Loss: {:.4f}, Valid Loss: {:.4f}'
+                print('Epoch [{}/{}], Step [{}/{}], Train Acc: {:.4f}, Valid Acc: {:.4f}'
                       .format(epoch+1, num_epochs, global_step, num_epochs*len(train_loader),
-                              average_train_loss, average_valid_loss))
-                
+                              accuracy_score(y_true,y_pred), val_acc))
+                # print(f"Training Accuracy: {accuracy_score(y_true,y_pred)}")
+                # print(f"Validation Accuracy: {val_acc}")
+
                 # checkpoint
                 # if best_valid_loss > average_valid_loss:
                 if val_acc >= best_acc:

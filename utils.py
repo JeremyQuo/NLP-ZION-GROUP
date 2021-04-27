@@ -17,6 +17,7 @@ import torch
 from transformers import BertConfig, BertTokenizer,CONFIG_NAME, WEIGHTS_NAME,BertForMultipleChoice
 from torch.nn.modules import Softmax
 from torch.utils.data import Dataset, DataLoader
+from num2words import num2words
 
 def save_checkpoint(save_path, model, valid_loss):
     if save_path == None:
@@ -37,7 +38,7 @@ def save_metrics(save_path, train_loss_list, valid_loss_list, global_steps_list)
                   'global_steps_list': global_steps_list}
     
     torch.save(state_dict, save_path)
-    print(f'Model saved to ==> {save_path}')
+    # print(f'Model saved to ==> {save_path}')
 
 def load_checkpoint(load_path, model,device):
     if load_path==None:
@@ -48,6 +49,36 @@ def load_checkpoint(load_path, model,device):
 
     model.load_state_dict(state_dict['model_state_dict'])
     return state_dict['valid_loss']
+
+
+import pandas as pd
+from gensim import corpora, models, similarities
+from nltk.tokenize import word_tokenize
+import numpy as np
+import nltk
+# nltk.download('punkt')
+
+def compare(options,query,argmax=True):
+    
+    options = [word_tokenize(t.lower()) for t in  options] #lower + tokenise
+    #options = [rmv_stwd(opt) for opt in options] 
+    
+    dictionary = corpora.Dictionary(options)
+    feature_cnt = len(dictionary.token2id)
+    corpus = [dictionary.doc2bow(opt) for opt in options]
+    tfidf = models.TfidfModel(corpus) 
+
+    kw_vector = dictionary.doc2bow(word_tokenize(query.lower()))
+    index = similarities.SparseMatrixSimilarity(tfidf[corpus], num_features = feature_cnt)
+    sim = index[tfidf[kw_vector]]
+    if argmax:
+        return np.argmax(sim)
+    return sim
+
+
+def convert_num_to_words(utterance):
+      utterance = ' '.join([num2words(i) if i.isdigit() else i for i in utterance.split()])
+      return utterance
 
 class MCDataset(Dataset):
   def __init__(self, A,B,C,D, targets, tokenizer, max_len):
@@ -68,12 +99,19 @@ class MCDataset(Dataset):
     D = str(self.D[item])
     target = self.targets[item]
 
+    A = convert_num_to_words(A)
+    B = convert_num_to_words(B)
+    C = convert_num_to_words(C)
+    D = convert_num_to_words(D)
+
     encoding = self.tokenizer(
         [A,B,C,D],
         add_special_tokens=True,
         max_length=self.max_len,
         return_token_type_ids=False,
-        pad_to_max_length=True,
+        # pad_to_max_length=True,
+        padding='max_length',
+        truncation=True,
         return_attention_mask=True,
         return_tensors='pt',
         )
@@ -106,26 +144,49 @@ def create_data_loader(df, tokenizer, max_len, batch_size):
     )
 
 
-def prepare_data(device,MAX_SEQ_LEN,batch_size,train_csv,test_csv=""):
+
+
+
+
+def mapDf(train_df_std,train_df,n):
+
+    extracted_art = []
+    for art,ques in zip(train_df_std['article'],train_df_std['question']):
+        sents = art.split('.')
+        arr = compare(sents,ques,False)
+        idx = (-arr).argsort()[:n]
+        idx = np.append(idx,0) if 0 not in idx else idx
+        idx = sorted(idx)
+        extracted_art.append( '.'.join([sents[_id] for _id in idx]) + '.')
+    train_df_std['extracted_art'] = extracted_art
+    
+    for i in ["A","B","C","D"]:
+        col = f"concat_{i}"
+        train_df[col] = train_df_std['extracted_art'] + '[SEP]' +train_df_std['question']+ '[SEP]' +train_df_std[i]
+    return train_df
+
+
+
+def prepare_data(device,MAX_SEQ_LEN,batch_size,train_csv,test_csv="",n=5):
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     train_df_std = pd.read_csv(train_csv,index_col=0)
     test_df_std = pd.read_csv(test_csv,index_col=0)
 
     le = preprocessing.LabelEncoder()
 
-
-    train_df_std = pd.read_csv(train_csv,index_col=0)
     train_df = pd.DataFrame({})
     train_df["labels"] = le.fit_transform(train_df_std['answer'])
-    for i in ["A","B","C","D"]:
-        col = f"concat_{i}"
-        train_df[col] = train_df_std['article']+ '[SEP]' +train_df_std['question']+ '[SEP]' +train_df_std[i]
-        #train_df[col] = train_df_std['question']+ '[SEP]' +train_df_std[i] + '[SEP]' +train_df_std['article']
+    test_df = pd.DataFrame({})
+    test_df['labels'] = le.transform(test_df_std['answer'])
 
-    df_train, df_test = train_test_split(
-        train_df,
-        test_size=0.2
-    )
+    df_train = mapDf(train_df_std,train_df,n)
+    df_test = mapDf(test_df_std,test_df,n)
+
+
+    # df_train, df_test = train_test_split(
+    #     train_df,
+    #     test_size=0.2
+    # )
 
  
 

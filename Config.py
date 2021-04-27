@@ -10,7 +10,9 @@ class Config:
 
         self.train_csv = 'std_data/MCTest/Mc500/mc500.train.csv'
         self.test_csv = 'std_data/MCTest/Mc500/mc500.test.csv'
-        self.MAX_SEQ_LEN = 512
-        self.batch_size = 1
+        self.MAX_SEQ_LEN = 128
+        self.batch_size = 16
+
+        self.n = 1 # Extract top related sentences
 
         print(f"[-] Training Dataset: {self.train_csv}")
